@@ -3,117 +3,141 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>INVENTARIS QR ONLINE</title>
+<title>📦 Inventaris QR PRO++</title>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
-
-<!-- Firebase -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } 
-from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "ISI_PUNYAMU",
-  authDomain: "ISI_PUNYAMU",
-  projectId: "ISI_PUNYAMU",
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const col = collection(db,"inventaris");
-
-window.buatQR = async function(){
-  const nama = namaInp.value;
-  const kategori = kategoriInp.value;
-  const lokasi = lokasiInp.value;
-  if(!nama || !kategori) return alert("Lengkapi data!");
-
-  const barang = { nama, kategori, lokasi, waktu:Date.now() };
-  await addDoc(col, barang);
-
-  qrcode.innerHTML="";
-  new QRCode(qrcode,{
-    text: JSON.stringify(barang),
-    width:200,height:200
-  });
-}
-
-window.scan = function(){
-  const sc = new Html5Qrcode("reader");
-  sc.start({facingMode:"environment"},{fps:10,qrbox:250},
-    async (text)=>{
-      try{
-        const barang = JSON.parse(text);
-        await addDoc(col, barang);
-        alert("Barang tersimpan ONLINE");
-        sc.stop();
-      }catch{
-        alert("QR tidak valid");
-      }
-    }
-  );
-}
-
-onSnapshot(col,(snap)=>{
-  tabel.innerHTML="";
-  snap.forEach(d=>{
-    const b=d.data();
-    tabel.innerHTML+=`
-    <tr>
-      <td>${b.nama}</td>
-      <td>${b.kategori}</td>
-      <td>
-        <input value="${b.lokasi}" onchange="update('${d.id}',this.value)">
-      </td>
-      <td>
-        <button onclick="hapus('${d.id}')">❌</button>
-      </td>
-    </tr>`;
-  })
-})
-
-window.hapus = async (id)=>{
-  await deleteDoc(doc(db,"inventaris",id));
-}
-window.update = async (id,val)=>{
-  await updateDoc(doc(db,"inventaris",id),{lokasi:val});
-}
-</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
-body{font-family:Arial;background:#f4f4f4;padding:15px}
-.box{background:#fff;padding:15px;border-radius:8px;margin-bottom:15px}
-input,button{width:100%;padding:10px;margin:5px 0}
+body{font-family:system-ui;background:#f1f5f9;padding:16px}
+.card{background:#fff;padding:16px;border-radius:12px;margin-bottom:16px}
+button,input{padding:6px 10px;margin:2px}
 table{width:100%;border-collapse:collapse}
-td,th{border:1px solid #ccc;padding:6px}
+th,td{border-bottom:1px solid #ddd;padding:6px}
+.alert{background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px;margin-bottom:10px}
 </style>
 </head>
 
 <body>
 
-<h2>🌐 INVENTARIS QR ONLINE</h2>
+<h2>📦 INVENTARIS QR PRO++</h2>
+<div id="notif"></div>
 
-<div class="box">
-<input id="namaInp" placeholder="Nama Barang">
-<input id="kategoriInp" placeholder="Kategori">
-<input id="lokasiInp" placeholder="Lokasi">
-<button onclick="buatQR()">Generate QR</button>
+<div class="card">
+<h3>➕ Tambah Barang</h3>
+<input id="nama" placeholder="Nama">
+<input id="kategori" placeholder="Kategori">
+<input id="lokasi" placeholder="Lokasi">
+<input id="min" type="number" placeholder="Batas Minimum" value="5">
+<button onclick="buatBarang()">Generate QR</button>
 <div id="qrcode"></div>
 </div>
 
-<div class="box">
-<button onclick="scan()">▶ Scan QR</button>
-<div id="reader"></div>
-</div>
-
-<div class="box">
+<div class="card">
+<h3>📋 Inventaris</h3>
 <table>
-<thead><tr><th>Nama</th><th>Kategori</th><th>Lokasi</th><th>Aksi</th></tr></thead>
+<thead>
+<tr>
+<th>QR</th><th>Nama</th><th>Stok</th><th>Keluar</th><th>Aksi</th>
+</tr>
+</thead>
 <tbody id="tabel"></tbody>
 </table>
 </div>
 
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, collection, doc, setDoc,
+  updateDoc, increment, onSnapshot,
+  addDoc, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCUpAHKrZY7pRKC0zN-j80dhBUW64NSyDE",
+  authDomain: "logistik-ef678.firebaseapp.com",
+  projectId: "logistik-ef678"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const inv = collection(db,"inventaris");
+const log = collection(db,"riwayat");
+
+/* ===== CONFIG WA ===== */
+const WA_TOKEN = "ISI_TOKEN_FONNTE_ANDA";
+const WA_TUJUAN = "628563057525"; // format internasional
+
+async function kirimWA(pesan){
+  await fetch("https://api.fonnte.com/send",{
+    method:"POST",
+    headers:{
+      "Authorization": WA_TOKEN
+    },
+    body: new URLSearchParams({
+      target: WA_TUJUAN,
+      message: pesan
+    })
+  });
+}
+
+async function catat(aksi,info){
+  await addDoc(log,{aksi,info,waktu:serverTimestamp()});
+}
+
+/* ===== TAMBAH BARANG ===== */
+window.buatBarang = async ()=>{
+  const id="BRG-"+Date.now();
+  await setDoc(doc(db,"inventaris",id),{
+    id,nama:nama.value,kategori:kategori.value,
+    lokasi:lokasi.value,stok:0,min:+min.value
+  });
+  new QRCode(qrcode,{text:id,width:200,height:200});
+  catat("Tambah Barang",nama.value);
+};
+
+/* ===== BARANG KELUAR ===== */
+window.keluar = async (id,nama,stok)=>{
+  const j = parseInt(prompt("Jumlah keluar:"));
+  if(!j||j<=0||j>stok) return alert("Jumlah tidak valid");
+
+  await updateDoc(doc(db,"inventaris",id),{
+    stok: increment(-j)
+  });
+
+  const pesan = `📦 BARANG KELUAR
+Nama: ${nama}
+Jumlah: ${j}
+Sisa Stok: ${stok-j}`;
+
+  kirimWA(pesan);
+  catat("Barang Keluar",`${nama} (${j})`);
+};
+
+/* ===== TABLE + NOTIF ===== */
+onSnapshot(inv,(snap)=>{
+  tabel.innerHTML="";
+  notif.innerHTML="";
+  snap.forEach(d=>{
+    const b=d.data();
+    if(b.stok<=b.min){
+      notif.innerHTML+=`<div class="alert">⚠️ Stok ${b.nama} menipis (${b.stok})</div>`;
+      kirimWA(`⚠️ STOK MENIPIS\n${b.nama}\nSisa: ${b.stok}`);
+    }
+    tabel.innerHTML+=`
+    <tr>
+      <td><img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${b.id}"></td>
+      <td>${b.nama}</td>
+      <td>${b.stok}</td>
+      <td>
+        <button onclick="keluar('${b.id}','${b.nama}',${b.stok})">➖ Keluar</button>
+      </td>
+      <td>${b.lokasi}</td>
+    </tr>`;
+  });
+});
+</script>
+
 </body>
-</html>
+  </html>
