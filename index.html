@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INVENTARIS QR ONLINE</title>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } 
+from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "ISI_PUNYAMU",
+  authDomain: "ISI_PUNYAMU",
+  projectId: "ISI_PUNYAMU",
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const col = collection(db,"inventaris");
+
+window.buatQR = async function(){
+  const nama = namaInp.value;
+  const kategori = kategoriInp.value;
+  const lokasi = lokasiInp.value;
+  if(!nama || !kategori) return alert("Lengkapi data!");
+
+  const barang = { nama, kategori, lokasi, waktu:Date.now() };
+  await addDoc(col, barang);
+
+  qrcode.innerHTML="";
+  new QRCode(qrcode,{
+    text: JSON.stringify(barang),
+    width:200,height:200
+  });
+}
+
+window.scan = function(){
+  const sc = new Html5Qrcode("reader");
+  sc.start({facingMode:"environment"},{fps:10,qrbox:250},
+    async (text)=>{
+      try{
+        const barang = JSON.parse(text);
+        await addDoc(col, barang);
+        alert("Barang tersimpan ONLINE");
+        sc.stop();
+      }catch{
+        alert("QR tidak valid");
+      }
+    }
+  );
+}
+
+onSnapshot(col,(snap)=>{
+  tabel.innerHTML="";
+  snap.forEach(d=>{
+    const b=d.data();
+    tabel.innerHTML+=`
+    <tr>
+      <td>${b.nama}</td>
+      <td>${b.kategori}</td>
+      <td>
+        <input value="${b.lokasi}" onchange="update('${d.id}',this.value)">
+      </td>
+      <td>
+        <button onclick="hapus('${d.id}')">❌</button>
+      </td>
+    </tr>`;
+  })
+})
+
+window.hapus = async (id)=>{
+  await deleteDoc(doc(db,"inventaris",id));
+}
+window.update = async (id,val)=>{
+  await updateDoc(doc(db,"inventaris",id),{lokasi:val});
+}
+</script>
+
+<style>
+body{font-family:Arial;background:#f4f4f4;padding:15px}
+.box{background:#fff;padding:15px;border-radius:8px;margin-bottom:15px}
+input,button{width:100%;padding:10px;margin:5px 0}
+table{width:100%;border-collapse:collapse}
+td,th{border:1px solid #ccc;padding:6px}
+</style>
+</head>
+
+<body>
+
+<h2>🌐 INVENTARIS QR ONLINE</h2>
+
+<div class="box">
+<input id="namaInp" placeholder="Nama Barang">
+<input id="kategoriInp" placeholder="Kategori">
+<input id="lokasiInp" placeholder="Lokasi">
+<button onclick="buatQR()">Generate QR</button>
+<div id="qrcode"></div>
+</div>
+
+<div class="box">
+<button onclick="scan()">▶ Scan QR</button>
+<div id="reader"></div>
+</div>
+
+<div class="box">
+<table>
+<thead><tr><th>Nama</th><th>Kategori</th><th>Lokasi</th><th>Aksi</th></tr></thead>
+<tbody id="tabel"></tbody>
+</table>
+</div>
+
+</body>
+</html>
